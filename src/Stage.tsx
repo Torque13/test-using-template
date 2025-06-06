@@ -7,65 +7,66 @@ import {
   LoadResponse
 } from "@chub-ai/stages-ts";
 
+/*  Hidden ledger seed  */
 import ledgerSeed from "./assets/relationship_char.json";
 
-/*
-  Headless relationship tracker (matches the verbose JSON version)
-  ──────────────────────────────────────────────────────────────
-  • Reads `ledgerSeed` once in `load()` and stores a clone in messageState.
-  • Decays every metric each turn (basic demo).  Add your own rules where marked.
-  • No UI — `render()` returns an empty fragment.
-*/
+/* ---------- Type aliases (matching template style) ---------- */
+type InitStateType    = { seed: typeof ledgerSeed };
+type MessageStateType = { ledger: typeof ledgerSeed };
+type ChatStateType    = unknown;
+type ConfigType       = unknown;
 
-// ---------- Type aliases ----------
-export type LedgerSchema   = typeof ledgerSeed;
-export interface InitState    { seed: LedgerSchema }
-export interface MessageState { ledger: LedgerSchema }
-export type ChatState   = unknown;
-export type ConfigType  = unknown;
-
-// ---------- Stage implementation ----------
+/* ---------- Stage implementation ---------- */
 export class Stage extends StageBase<
-  InitState,
-  ChatState,
-  MessageState,
+  InitStateType,
+  ChatStateType,
+  MessageStateType,
   ConfigType
 > {
   constructor(
-    data: InitialData<InitState, ChatState, MessageState, ConfigType>
+    data: InitialData<
+      InitStateType,
+      ChatStateType,
+      MessageStateType,
+      ConfigType
+    >
   ) {
     super(data);
   }
 
-  /* 1️⃣  Runs once per chat */
-  async load(): Promise<Partial<LoadResponse<InitState, ChatState, MessageState>>> {
+  /* Runs once after constructor */
+  async load(): Promise<
+    Partial<LoadResponse<InitStateType, ChatStateType, MessageStateType>>
+  > {
     return {
-      initState:    { seed: ledgerSeed },              // immutable baseline
-      messageState: { ledger: structuredClone(ledgerSeed) } // first working copy
+      initState:    { seed: ledgerSeed },
+      messageState: { ledger: structuredClone(ledgerSeed) }
     };
   }
 
-  /* 2️⃣  Hook before sending the user prompt (unused for now) */
+  /* No prompt injection yet */
   async beforePrompt(
     _userMessage: Message
-  ): Promise<Partial<StageResponse<ChatState, MessageState>>> {
-    return {};  // inject nothing yet
+  ): Promise<Partial<StageResponse<ChatStateType, MessageStateType>>> {
+    return {};
   }
 
-  /* 3️⃣  Hook after receiving assistant response */
+  /* Called right after the assistant’s reply */
   async afterResponse(
-    botMessage: Message,
-    state: MessageState
-  ): Promise<Partial<StageResponse<ChatState, MessageState>>> {
-    // Clone the current working ledger
-    const working = structuredClone(state.ledger);
+    botMessage: Message
+  ): Promise<Partial<StageResponse<ChatStateType, MessageStateType>>> {
+    /* Clone the working ledger (or fallback to seed) */
+    const working = structuredClone(
+      this.messageState?.ledger ?? ledgerSeed
+    );
 
-    /*
-      🔧 TODO: Add your own event-detection logic here.
-      Example: if (/hug|cuddle/i.test(botMessage.content)) working.metrics.affection.value += 5;
+    /* 🔧  Insert your metric-update logic here
+       Example:
+       if (/hug|cuddle/i.test(botMessage.content))
+           working.metrics.affection.value += 5;
     */
 
-    // Generic decay step
+    /* Simple decay step (demo) */
     Object.values(working.metrics as any).forEach((m: any) => {
       m.value -= m.decay;
     });
@@ -73,7 +74,7 @@ export class Stage extends StageBase<
     return { messageState: { ledger: working } };
   }
 
-  /* 4️⃣  No UI — stay hidden */
+  /* No visible UI — stage stays hidden */
   render(): ReactElement {
     return <></>;
   }
