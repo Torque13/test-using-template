@@ -1,8 +1,0 @@
-# Stage information
-name: "Dynamic Relationships"
-type: "stage"
-version: "1.0.0"
-position: "NONE"
-
-# Explicitly disable configuration
-config_schema: null
