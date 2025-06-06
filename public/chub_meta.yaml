@@ -2,7 +2,6 @@
 name: "Dynamic Relationships"
 type: "stage"
 version: "1.0.0"
-visibility: "PRIVATE"
 position: "NONE"
 
 # Explicitly disable configuration
