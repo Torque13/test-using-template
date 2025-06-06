@@ -7,9 +7,10 @@ import {
   LoadResponse
 } from "@chub-ai/stages-ts";
 
-import ledgerSeed from "./assets/relationship_char.json"; // 🔒 hidden JSON
+/* 🔒 hidden seed JSON  */
+import ledgerSeed from "./assets/relationship_char.json";
 
-/* ---------- Type aliases ---------- */
+/* ---------- Types ---------- */
 type Ledger             = typeof ledgerSeed;
 type InitStateType      = { seed: Ledger };
 type MessageStateType   = { ledger: Ledger };
@@ -23,7 +24,7 @@ export class Stage extends StageBase<
   MessageStateType,
   ConfigType
 > {
-  /** in-memory working copy (mutated each turn) */
+  /** Working copy that mutates each turn */
   private workingLedger: Ledger = structuredClone(ledgerSeed);
 
   constructor(
@@ -37,57 +38,57 @@ export class Stage extends StageBase<
     super(data);
   }
 
-  /* 1) Runs once at chat/branch start */
+  /* 1️⃣  Runs at chat or branch start */
   async load(): Promise<
     Partial<LoadResponse<InitStateType, ChatStateType, MessageStateType>>
   > {
     this.workingLedger = structuredClone(ledgerSeed);
+
     return {
-      success: true,
-      error:   null,
       initState:    { seed: ledgerSeed },
-      chatState:    null,
       messageState: { ledger: this.workingLedger }
     };
   }
 
-  /* 2) Called when the engine restores state after a swipe */
+  /* 2️⃣  Engine calls this when restoring state after a swipe */
   async setState(state: MessageStateType): Promise<void> {
     if (state?.ledger) {
       this.workingLedger = structuredClone(state.ledger);
     }
   }
 
-  /* 3) Before the user's prompt is sent to the LLM */
+  /* 3️⃣  No prompt injection for now (keeps JSON hidden) */
   async beforePrompt(
     _userMsg: Message
   ): Promise<Partial<StageResponse<ChatStateType, MessageStateType>>> {
-    /*  Invisible system summary (optional) */
-    const m = this.workingLedger.metrics as any;
-    const digest =
-      `REL_STATE: trust=${m.trust.value.toFixed(0)}, ` +
-      `affection=${m.affection.value.toFixed(0)}, ` +
-      `resentment=${m.resentment.value.toFixed(0)}`;
-
-    return {
-      systemMessage: digest,   // LLM sees it; user does not
-      messageState:  { ledger: this.workingLedger }
-    };
+    return {};
   }
 
-  /* 4) After the assistant replies */
+  /* 4️⃣  Update ledger after assistant reply */
   async afterResponse(
     botMsg: Message
   ): Promise<Partial<StageResponse<ChatStateType, MessageStateType>>> {
-    /* 🔧 Example rule — boost affection on “thank you” */
-    if (/thank you/i.test(botMsg.content)) {
-      const aff = (this.workingLedger.metrics as any).affection;
-      aff.value += 3; aff.trend = 3;
+
+    /* --- Example rules (edit as you wish) --- */
+    const text = botMsg.content.toLowerCase();
+    const m = this.workingLedger.metrics as any;
+
+    /* Positive event */
+    if (/thanks|thank you/.test(text)) {
+      m.affection.value   += 4;
+      m.affection.trend    = 4;
+      m.resentment.value  -= 2;          // soften grudges a bit
+    }
+
+    /* Negative event */
+    if (/idiot|hate you|stupid/.test(text)) {
+      m.resentment.value  += 10;
+      m.trust.value       -= 5;
     }
 
     /* Generic decay each turn */
-    Object.values(this.workingLedger.metrics as any).forEach((m: any) => {
-      m.value -= m.decay;
+    Object.values(m).forEach((metric: any) => {
+      metric.value -= metric.decay;
     });
 
     return {
@@ -95,7 +96,7 @@ export class Stage extends StageBase<
     };
   }
 
-  /* 5) No visible UI */
+  /* 5️⃣  No visible UI */
   render(): ReactElement {
     return <></>;
   }
