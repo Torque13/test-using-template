@@ -7,14 +7,14 @@ import {
   LoadResponse
 } from "@chub-ai/stages-ts";
 
-/*  Hidden ledger seed  */
-import ledgerSeed from "./assets/relationship_char.json";
+import ledgerSeed from "./assets/relationship_char.json"; // 🔒 hidden JSON
 
-/* ---------- Type aliases (matching template style) ---------- */
-type InitStateType    = { seed: typeof ledgerSeed };
-type MessageStateType = { ledger: typeof ledgerSeed };
-type ChatStateType    = unknown;
-type ConfigType       = unknown;
+/* ---------- Type aliases ---------- */
+type Ledger             = typeof ledgerSeed;
+type InitStateType      = { seed: Ledger };
+type MessageStateType   = { ledger: Ledger };
+type ChatStateType      = unknown;
+type ConfigType         = unknown;
 
 /* ---------- Stage implementation ---------- */
 export class Stage extends StageBase<
@@ -23,6 +23,9 @@ export class Stage extends StageBase<
   MessageStateType,
   ConfigType
 > {
+  /** in-memory working copy (mutated each turn) */
+  private workingLedger: Ledger = structuredClone(ledgerSeed);
+
   constructor(
     data: InitialData<
       InitStateType,
@@ -34,47 +37,65 @@ export class Stage extends StageBase<
     super(data);
   }
 
-  /* Runs once after constructor */
+  /* 1) Runs once at chat/branch start */
   async load(): Promise<
     Partial<LoadResponse<InitStateType, ChatStateType, MessageStateType>>
   > {
+    this.workingLedger = structuredClone(ledgerSeed);
     return {
+      success: true,
+      error:   null,
       initState:    { seed: ledgerSeed },
-      messageState: { ledger: structuredClone(ledgerSeed) }
+      chatState:    null,
+      messageState: { ledger: this.workingLedger }
     };
   }
 
-  /* No prompt injection yet */
-  async beforePrompt(
-    _userMessage: Message
-  ): Promise<Partial<StageResponse<ChatStateType, MessageStateType>>> {
-    return {};
+  /* 2) Called when the engine restores state after a swipe */
+  async setState(state: MessageStateType): Promise<void> {
+    if (state?.ledger) {
+      this.workingLedger = structuredClone(state.ledger);
+    }
   }
 
-  /* Called right after the assistant’s reply */
-  async afterResponse(
-    botMessage: Message
+  /* 3) Before the user's prompt is sent to the LLM */
+  async beforePrompt(
+    _userMsg: Message
   ): Promise<Partial<StageResponse<ChatStateType, MessageStateType>>> {
-    /* Clone the working ledger (or fallback to seed) */
-    const working = structuredClone(
-      this.messageState?.ledger ?? ledgerSeed
-    );
+    /*  Invisible system summary (optional) */
+    const m = this.workingLedger.metrics as any;
+    const digest =
+      `REL_STATE: trust=${m.trust.value.toFixed(0)}, ` +
+      `affection=${m.affection.value.toFixed(0)}, ` +
+      `resentment=${m.resentment.value.toFixed(0)}`;
 
-    /* 🔧  Insert your metric-update logic here
-       Example:
-       if (/hug|cuddle/i.test(botMessage.content))
-           working.metrics.affection.value += 5;
-    */
+    return {
+      systemMessage: digest,   // LLM sees it; user does not
+      messageState:  { ledger: this.workingLedger }
+    };
+  }
 
-    /* Simple decay step (demo) */
-    Object.values(working.metrics as any).forEach((m: any) => {
+  /* 4) After the assistant replies */
+  async afterResponse(
+    botMsg: Message
+  ): Promise<Partial<StageResponse<ChatStateType, MessageStateType>>> {
+    /* 🔧 Example rule — boost affection on “thank you” */
+    if (/thank you/i.test(botMsg.content)) {
+      const aff = (this.workingLedger.metrics as any).affection;
+      aff.value += 3; aff.trend = 3;
+    }
+
+    /* Generic decay each turn */
+    Object.values(this.workingLedger.metrics as any).forEach((m: any) => {
       m.value -= m.decay;
     });
 
-    return { messageState: { ledger: working } };
+    return {
+      messageState: { ledger: structuredClone(this.workingLedger) }
+    };
   }
 
-  /* No visible UI — stage stays hidden */
+  /* 5) No visible UI */
   render(): ReactElement {
     return <></>;
   }
