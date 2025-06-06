@@ -60,7 +60,7 @@ state_schema:
         type: array
         items:
           type: integer
-
+position: 'NONE'
 # Whether to publish as 'Anonymous' instead of under your username.
 # is_anonymous: false
 
