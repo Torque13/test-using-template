@@ -1,66 +1,82 @@
+import { ReactElement } from "react";
+import {
+  StageBase,
+  InitialData,
+  Message,
+  StageResponse,
+  LoadResponse
+} from "@chub-ai/stages-ts";
 
 import ledgerSeed from "./assets/relationship_char.json";
-import { StageBase, InitialData } from "chub-stage-lib";
 
-type Metric = { value: number; trend: number; decay: number };
-interface LedgerSchema { 
-    char_id: string;
-    personality: Record<string, number>;
-    metrics: Record<string, Metric>;
-    flags: Record<string, any>;
-    memories: any[];
-}
+/*
+  Headless relationship tracker (matches the verbose JSON version)
+  ──────────────────────────────────────────────────────────────
+  • Reads `ledgerSeed` once in `load()` and stores a clone in messageState.
+  • Decays every metric each turn (basic demo).  Add your own rules where marked.
+  • No UI — `render()` returns an empty fragment.
+*/
 
-interface InitState { seed: LedgerSchema }
-interface MessageState { ledger: LedgerSchema }
-interface ChatState {}
+// ---------- Type aliases ----------
+export type LedgerSchema   = typeof ledgerSeed;
+export interface InitState    { seed: LedgerSchema }
+export interface MessageState { ledger: LedgerSchema }
+export type ChatState   = unknown;
+export type ConfigType  = unknown;
 
-export default class RelationshipStage extends StageBase<InitState, ChatState, MessageState> {
-  constructor(data: InitialData<InitState, ChatState, MessageState>) {
+// ---------- Stage implementation ----------
+export class Stage extends StageBase<
+  InitState,
+  ChatState,
+  MessageState,
+  ConfigType
+> {
+  constructor(
+    data: InitialData<InitState, ChatState, MessageState, ConfigType>
+  ) {
     super(data);
   }
 
-  async load() {
-    return { initState: { seed: ledgerSeed } };
+  /* 1️⃣  Runs once per chat */
+  async load(): Promise<Partial<LoadResponse<InitState, ChatState, MessageState>>> {
+    return {
+      initState:    { seed: ledgerSeed },              // immutable baseline
+      messageState: { ledger: structuredClone(ledgerSeed) } // first working copy
+    };
   }
 
-  adjust(metricKey: string, delta: number, working: LedgerSchema) {
-    const metric = working.metrics[metricKey];
-    if (metric) {
-      metric.value += delta;
-      metric.trend = delta;
-    }
+  /* 2️⃣  Hook before sending the user prompt (unused for now) */
+  async beforePrompt(
+    _userMessage: Message
+  ): Promise<Partial<StageResponse<ChatState, MessageState>>> {
+    return {};  // inject nothing yet
   }
 
-  decayAll(working: LedgerSchema) {
-    for (const m of Object.values(working.metrics)) {
+  /* 3️⃣  Hook after receiving assistant response */
+  async afterResponse(
+    botMessage: Message,
+    state: MessageState
+  ): Promise<Partial<StageResponse<ChatState, MessageState>>> {
+    // Clone the current working ledger
+    const working = structuredClone(state.ledger);
+
+    /*
+      🔧 TODO: Add your own event-detection logic here.
+      Example: if (/hug|cuddle/i.test(botMessage.content)) working.metrics.affection.value += 5;
+    */
+
+    // Generic decay step
+    Object.values(working.metrics as any).forEach((m: any) => {
       m.value -= m.decay;
-    }
-  }
-
-  async afterResponse({ state, botMessage }) {
-    const working: LedgerSchema = structuredClone(state?.ledger ?? this.initState.seed);
-
-    const text = botMessage.content.toLowerCase();
-
-    if (/hug|cuddle|embraces/.test(text)) this.adjust("physical_intimacy", 8, working);
-    if (/kiss/.test(text)) {
-      this.adjust("physical_intimacy", 12, working);
-      this.adjust("sexual_tension", -30, working);
-    }
-    if (/push(es)? away|rejects/.test(text)) this.adjust("physical_intimacy", -10, working);
-    if (/thank(s)? you/.test(text)) this.adjust("trust", 2, working);
-    if (/argue|yell/.test(text)) {
-      this.adjust("trust", -5, working);
-      this.adjust("resentment", 5, working);
-    }
-
-    this.decayAll(working);
+    });
 
     return { messageState: { ledger: working } };
   }
 
-  render() {
-    return null; // hidden tracker
+  /* 4️⃣  No UI — stay hidden */
+  render(): ReactElement {
+    return <></>;
   }
 }
+
+export default Stage;
